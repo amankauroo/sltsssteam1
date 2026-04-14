@@ -136,9 +136,9 @@ DEFAULT_VIDEO_MODE = "camera"
 MICROPHONE_DEVICE = None
 
 # FRAME_INTERVAL: How many seconds to wait between taking pictures
-# 0.5 seconds = 2 frames per second - fast enough to catch hazards
+# 1.0 second = 1 frame per second - avoids flooding Gemini on Pi
 # Lower number = more pictures = more data used
-SECONDS_BETWEEN_FRAMES = 0.5
+SECONDS_BETWEEN_FRAMES = 1.0
 
 # NUDGE_INTERVAL: How often (seconds) to prompt the AI to describe the scene
 # This forces the AI to speak even when the user hasn't said anything
@@ -151,7 +151,7 @@ NUDGE_INTERVAL = 3
 # IMPORTANT: Keep this secret! Don't share it with anyone.
 # If someone gets your API key, they can use your Google AI account.
 
-MY_API_KEY = "AIzaSyAsMCiS-q6qWFPC_PhqlahkrdNglhWmIz8"
+MY_API_KEY = "AIzaSyCBsrAvgqWIQoxHk9-AEVXu_Eny55pIrjQ"
 
 
 # =============================================================================
@@ -576,15 +576,24 @@ class AIAssistant:
                     await asyncio.sleep(0.2)
                     continue
 
-                # Send the frame directly to the AI - no queue delay!
-                # This keeps video perfectly in sync with audio
+                # Send the frame as client content (Part-based) — this is the
+                # correct way to send images to Gemini Live. send_realtime_input
+                # with Blob is unreliable for images on Raspberry Pi.
                 try:
                     image_bytes = base64.b64decode(frame["data"])
-                    await self.ai_session.send_realtime_input(
-                        media=types.Blob(
-                            data=image_bytes,
-                            mime_type=frame["mime_type"]
-                        )
+                    await self.ai_session.send_client_content(
+                        turns={
+                            "role": "user",
+                            "parts": [
+                                types.Part(
+                                    inline_data=types.Blob(
+                                        data=image_bytes,
+                                        mime_type="image/jpeg"
+                                    )
+                                )
+                            ]
+                        },
+                        turn_complete=False
                     )
                 except Exception:
                     self.is_connected = False
@@ -729,17 +738,19 @@ class AIAssistant:
             mic_index = self.get_best_mic_index()
 
         mic_info = audio_system.get_device_info_by_index(mic_index)
+        mic_rate = int(mic_info["defaultSampleRate"])
         print(f"[Mic device info: {mic_info}]")
         print(
-            f"[Using microphone: {mic_info['name']} (index {mic_index}, channels 1, rate {RECORDING_QUALITY})]")
+            f"[Using microphone: {mic_info['name']} (index {mic_index}, channels 1, rate {mic_rate})]")
 
         # Open an audio input stream (start recording)
         # Force mono (1 channel) for reliable USB mic compatibility
+        # Use the mic's native sample rate to avoid paInvalidSampleRate errors
         self.microphone_stream = await asyncio.to_thread(
             audio_system.open,
             format=AUDIO_FORMAT,                        # 16-bit audio
             channels=1,                                 # Force mono for USB mic
-            rate=RECORDING_QUALITY,                     # 16,000 samples per second
+            rate=mic_rate,                              # Use mic's native rate
             # This is an INPUT (microphone)
             input=True,
             input_device_index=mic_index,               # Use the selected mic

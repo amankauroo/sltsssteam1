@@ -148,7 +148,7 @@ SECONDS_BETWEEN_FRAMES = 0.6
 # IMPORTANT: Keep this secret! Don't share it with anyone.
 # If someone gets your API key, they can use your Google AI account.
 
-MY_API_KEY = "AIzaSyAsMCiS-q6qWFPC_PhqlahkrdNglhWmIz8"
+MY_API_KEY = ""
 
 
 # =============================================================================
