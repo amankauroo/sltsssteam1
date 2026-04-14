@@ -1,0 +1,11 @@
+# Required for both main.py and talking_spectacles.py
+google-genai
+pyaudio
+pillow
+
+# Required for main.py only (Windows/webcam)
+opencv-python
+
+# Required for talking_spectacles.py only (Raspberry Pi)
+# picamera2 is pre-installed on Raspberry Pi OS - install manually if needed:
+# pip install picamera2
