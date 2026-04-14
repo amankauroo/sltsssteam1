@@ -132,7 +132,7 @@ AI_MODEL_NAME = "models/gemini-2.5-flash-native-audio-preview-12-2025"
 DEFAULT_VIDEO_MODE = "camera"
 
 # MICROPHONE_DEVICE: Which microphone to use
-# Use None for the system default, or a number (0, 1, 2...) from check_audio.py
+# Use None to auto-detect USB mic, or a number (0, 1, 2...) from check_audio.py
 MICROPHONE_DEVICE = None
 
 # FRAME_INTERVAL: How many seconds to wait between taking pictures
@@ -382,6 +382,27 @@ class AIAssistant:
 
         # Timestamp of the last nudge prompt sent to the AI
         self.last_nudge_time = 0
+
+    # =========================================================================
+    # FUNCTION: Auto-detect the best USB microphone
+    # =========================================================================
+    def get_best_mic_index(self):
+        """
+        Automatically finds a USB microphone connected to the Raspberry Pi.
+        Falls back to the system default if no USB mic is found.
+        """
+        for i in range(audio_system.get_device_count()):
+            info = audio_system.get_device_info_by_index(i)
+            name = info["name"].lower()
+            if ("usb" in name or "audio" in name) and info["maxInputChannels"] > 0:
+                print(f"[AUTO MIC SELECTED]: {info['name']} (index {i})")
+                return i
+
+        # No USB mic found, fall back to system default
+        default_info = audio_system.get_default_input_device_info()
+        print(
+            f"[DEFAULT MIC]: {default_info['name']} (index {default_info['index']})")
+        return default_info["index"]
 
     # =========================================================================
     # FUNCTION: Send Text Messages to the AI
@@ -705,18 +726,19 @@ class AIAssistant:
         if MICROPHONE_DEVICE is not None:
             mic_index = MICROPHONE_DEVICE
         else:
-            mic_index = audio_system.get_default_input_device_info()["index"]
+            mic_index = self.get_best_mic_index()
 
         mic_info = audio_system.get_device_info_by_index(mic_index)
-        mic_channels = min(NUMBER_OF_CHANNELS, mic_info["maxInputChannels"])
+        print(f"[Mic device info: {mic_info}]")
         print(
-            f"[Using microphone: {mic_info['name']} (index {mic_index}, channels {mic_channels})]")
+            f"[Using microphone: {mic_info['name']} (index {mic_index}, channels 1, rate {RECORDING_QUALITY})]")
 
         # Open an audio input stream (start recording)
+        # Force mono (1 channel) for reliable USB mic compatibility
         self.microphone_stream = await asyncio.to_thread(
             audio_system.open,
             format=AUDIO_FORMAT,                        # 16-bit audio
-            channels=mic_channels,                      # Match device channels
+            channels=1,                                 # Force mono for USB mic
             rate=RECORDING_QUALITY,                     # 16,000 samples per second
             # This is an INPUT (microphone)
             input=True,
